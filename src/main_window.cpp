@@ -1,4 +1,5 @@
 #include "aiws/gui/main_window.hpp"
+#include "aiws/gui/resettable.hpp"
 
 #include "aiws/gui/workspace_widget.hpp"
 #include "aiws/gui/search_widget.hpp"
@@ -293,7 +294,24 @@ void MainWindow::term_inspection_requested(const QString& term,
 }
 
 void MainWindow::reset_application() {
-    // TODO
+    // Clear workspace data
+    workspace_.clear();
+    corpus_current_ = false;
+
+    // Reset all components
+    Resettable* components[] = {
+        workspace_widget_,
+        search_widget_,
+        term_inspector_widget_,
+        context_widget_
+    };
+
+    for (Resettable* component : components) {
+        component->reset();
+    }
+
+    update_action_states();
+    status_label_->setText("Application reset.");
 }
 
 void MainWindow::exit_application() {
