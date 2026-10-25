@@ -5,6 +5,9 @@
 #include "aiws/gui/term_inspector_widget.hpp"
 #include "aiws/gui/context_widget.hpp"
 
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QWidget>
 #include <QLabel>
 #include <QPushButton>
@@ -70,12 +73,21 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     layout->addLayout(footer);
 
+    // Connect workspace events
+    connect(workspace_widget_, &WorkspaceWidget::add_document_requested,
+            this, &MainWindow::add_document);
+
+    connect(workspace_widget_, &WorkspaceWidget::document_selected,
+            this, &MainWindow::document_selected);
+
     // Connect footer buttons
     connect(reset_button_, &QPushButton::clicked,
             this, &MainWindow::reset_application);
 
     connect(exit_button_, &QPushButton::clicked,
             this, &MainWindow::exit_application);
+
+    update_action_states();
 }
 
 void MainWindow::set_exit_callback(ExitCallback callback) noexcept {
@@ -83,7 +95,48 @@ void MainWindow::set_exit_callback(ExitCallback callback) noexcept {
 }
 
 void MainWindow::add_document() {
-    // TODO
+    // Choose document file
+    QString path = QFileDialog::getOpenFileName(
+        this, "Add Document", QString(),
+        "Text Files (*.txt);;All Files (*)"
+    );
+
+    if (path.isEmpty()) {
+        return;
+    }
+
+    QFileInfo info(path);
+    QString id = info.absoluteFilePath();
+    QString title = info.fileName();
+
+    // Check existing documents
+    for (const Document& document : workspace_.documents()) {
+        if (document.id() == id.toStdString()) {
+            status_label_->setText("Document already added.");
+            return;
+        }
+    }
+
+    // Read document text
+    QFile file(id);
+    if (!file.open(QIODevice::ReadOnly)) {
+        status_label_->setText("Could not open file.");
+        return;
+    }
+
+    QString text = QString::fromUtf8(file.readAll());
+    if (file.error() != QFileDevice::NoError) {
+        status_label_->setText("Could not read file.");
+        return;
+    }
+
+    // Update backend first
+    Document document(id.toStdString(), title.toStdString(), text.toStdString());
+    workspace_.add_document(document);
+    invalidate_corpus();
+
+    workspace_widget_->add_document(title);
+    status_label_->setText("Document added: " + title);
 }
 
 void MainWindow::build_corpus() {
@@ -91,8 +144,19 @@ void MainWindow::build_corpus() {
 }
 
 void MainWindow::document_selected(int row) {
-    // TODO
-    (void)row;
+    const std::vector<Document>& documents = workspace_.documents();
+
+    if (row < 0 || static_cast<std::size_t>(row) >= documents.size()) {
+        workspace_widget_->clear_selected_document();
+        return;
+    }
+
+    // Show selected document
+    const Document& document = documents[row];
+    workspace_widget_->show_selected_document(
+        QString::fromStdString(document.title()),
+        QString::fromStdString(document.text())
+    );
 }
 
 void MainWindow::search_requested(const QString& query, int k) {
@@ -134,15 +198,28 @@ void MainWindow::exit_application() {
 }
 
 void MainWindow::update_action_states() {
-    // TODO
+    workspace_widget_->set_build_corpus_enabled(!workspace_.documents().empty());
+
+    bool can_search = corpus_current_ && search_widget_->has_query();
+    search_widget_->set_search_enabled(can_search);
+    context_widget_->set_build_context_enabled(can_search);
+    term_inspector_widget_->set_inspection_enabled(corpus_current_);
 }
 
 void MainWindow::invalidate_corpus() {
-    // TODO
+    // Invalidate old corpus
+    corpus_current_ = false;
+    workspace_widget_->set_corpus_status("Corpus: Not built");
+    clear_processing_outputs();
+    update_action_states();
 }
 
 void MainWindow::clear_processing_outputs() {
-    // TODO
+    // Clear old output
+    search_widget_->clear_results();
+    term_inspector_widget_->set_selected_chunk(QString());
+    term_inspector_widget_->clear_statistics();
+    context_widget_->clear_context();
 }
 
 }  // namespace aiws::gui
