@@ -14,6 +14,8 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 
+#include <exception>
+
 namespace aiws::gui {
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -76,6 +78,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // Connect workspace events
     connect(workspace_widget_, &WorkspaceWidget::add_document_requested,
             this, &MainWindow::add_document);
+
+    connect(workspace_widget_, &WorkspaceWidget::build_corpus_requested,
+            this, &MainWindow::build_corpus);
 
     connect(workspace_widget_, &WorkspaceWidget::document_selected,
             this, &MainWindow::document_selected);
@@ -140,7 +145,27 @@ void MainWindow::add_document() {
 }
 
 void MainWindow::build_corpus() {
-    // TODO
+    if (workspace_.documents().empty()) {
+        return;
+    }
+
+    // Rebuild current corpus
+    try {
+        processing_core_.rebuild(workspace_);
+    } catch (const std::exception& error) {
+        invalidate_corpus();
+        status_label_->setText("Build failed: " + QString::fromUtf8(error.what()));
+        return;
+    }
+
+    corpus_current_ = true;
+    clear_processing_outputs();
+
+    // Show corpus status
+    QString count = QString::number(processing_core_.chunk_count());
+    workspace_widget_->set_corpus_status("Corpus: " + count + " chunks");
+    status_label_->setText("Corpus built.");
+    update_action_states();
 }
 
 void MainWindow::document_selected(int row) {
