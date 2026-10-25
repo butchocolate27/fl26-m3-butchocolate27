@@ -102,6 +102,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(term_inspector_widget_, &TermInspectorWidget::term_inspection_requested,
             this, &MainWindow::term_inspection_requested);
 
+    // Connect context events
+    connect(context_widget_, &ContextWidget::build_context_requested,
+            this, &MainWindow::build_context_requested);
+
     // Connect footer buttons
     connect(reset_button_, &QPushButton::clicked,
             this, &MainWindow::reset_application);
@@ -228,8 +232,24 @@ void MainWindow::query_changed(const QString& query) {
 }
 
 void MainWindow::build_context_requested(int token_budget) {
-    // TODO
-    (void)token_budget;
+    QString query = search_widget_->query();
+    if (!corpus_current_ || query.trimmed().isEmpty()) {
+        return;
+    }
+
+    // Build current context
+    try {
+        std::vector<ContextItem> items = processing_core_.build_context(
+            query.toStdString(),
+            search_widget_->result_count(),
+            static_cast<std::size_t>(token_budget)
+        );
+        context_widget_->set_context(items);
+        status_label_->setText("Context built.");
+    } catch (const std::exception& error) {
+        context_widget_->clear_context();
+        status_label_->setText("Context failed: " + QString::fromUtf8(error.what()));
+    }
 }
 
 void MainWindow::source_document_requested(const QString& document_id) {
