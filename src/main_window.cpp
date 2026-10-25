@@ -85,6 +85,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(workspace_widget_, &WorkspaceWidget::document_selected,
             this, &MainWindow::document_selected);
 
+    // Connect search events
+    connect(search_widget_, &SearchWidget::search_requested,
+            this, &MainWindow::search_requested);
+
+    connect(search_widget_, &SearchWidget::query_changed,
+            this, &MainWindow::query_changed);
+
+    connect(search_widget_, &SearchWidget::source_document_requested,
+            this, &MainWindow::source_document_requested);
+
+    connect(search_widget_, &SearchWidget::selected_chunk_changed,
+            term_inspector_widget_, &TermInspectorWidget::set_selected_chunk);
+
     // Connect footer buttons
     connect(reset_button_, &QPushButton::clicked,
             this, &MainWindow::reset_application);
@@ -185,14 +198,29 @@ void MainWindow::document_selected(int row) {
 }
 
 void MainWindow::search_requested(const QString& query, int k) {
-    // TODO
-    (void)query;
-    (void)k;
+    if (!corpus_current_ || query.trimmed().isEmpty()) {
+        return;
+    }
+
+    // Run requested search
+    try {
+        std::vector<SearchResult> results = processing_core_.search(query.toStdString(), k);
+        search_widget_->set_results(results);
+        term_inspector_widget_->clear_statistics();
+        context_widget_->clear_context();
+        status_label_->setText("Search complete.");
+    } catch (const std::exception& error) {
+        clear_processing_outputs();
+        status_label_->setText("Search failed: " + QString::fromUtf8(error.what()));
+    }
+
+    update_action_states();
 }
 
 void MainWindow::query_changed(const QString& query) {
-    // TODO
+    // Update action states
     (void)query;
+    update_action_states();
 }
 
 void MainWindow::build_context_requested(int token_budget) {
@@ -201,8 +229,19 @@ void MainWindow::build_context_requested(int token_budget) {
 }
 
 void MainWindow::source_document_requested(const QString& document_id) {
-    // TODO
-    (void)document_id;
+    // Find source document
+    const std::vector<Document>& documents = workspace_.documents();
+    std::string id = document_id.toStdString();
+
+    for (std::size_t row = 0; row < documents.size(); ++row) {
+        if (documents[row].id() == id) {
+            workspace_widget_->select_document(static_cast<int>(row));
+            status_label_->setText("Source document shown.");
+            return;
+        }
+    }
+
+    status_label_->setText("Source document not found.");
 }
 
 void MainWindow::term_inspection_requested(const QString& term,
