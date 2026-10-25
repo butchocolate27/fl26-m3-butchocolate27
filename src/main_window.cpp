@@ -98,6 +98,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(search_widget_, &SearchWidget::selected_chunk_changed,
             term_inspector_widget_, &TermInspectorWidget::set_selected_chunk);
 
+    // Connect inspector events
+    connect(term_inspector_widget_, &TermInspectorWidget::term_inspection_requested,
+            this, &MainWindow::term_inspection_requested);
+
     // Connect footer buttons
     connect(reset_button_, &QPushButton::clicked,
             this, &MainWindow::reset_application);
@@ -246,9 +250,26 @@ void MainWindow::source_document_requested(const QString& document_id) {
 
 void MainWindow::term_inspection_requested(const QString& term,
                                           const QString& chunk_id) {
-    // TODO
-    (void)term;
-    (void)chunk_id;
+    if (!corpus_current_ || term.trimmed().isEmpty()) {
+        return;
+    }
+
+    // Read term statistics
+    try {
+        std::size_t df = processing_core_.document_frequency(term.toStdString());
+        bool has_chunk = !chunk_id.isEmpty();
+        std::size_t tf = 0;
+
+        if (has_chunk) {
+            tf = processing_core_.term_frequency(term.toStdString(), chunk_id.toStdString());
+        }
+
+        term_inspector_widget_->set_statistics(df, has_chunk, tf);
+        status_label_->setText("Term inspected.");
+    } catch (const std::exception& error) {
+        term_inspector_widget_->clear_statistics();
+        status_label_->setText("Inspection failed: " + QString::fromUtf8(error.what()));
+    }
 }
 
 void MainWindow::reset_application() {
